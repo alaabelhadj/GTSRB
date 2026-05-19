@@ -75,6 +75,7 @@ st.markdown("""
         border-radius: 10px;
         padding: 1rem;
         margin: 0.5rem 0;
+        color: #1a1a2e;
     }
     .stProgress > div > div > div { background-color: #48bb78; }
 </style>
@@ -156,10 +157,12 @@ def load_model(model_path):
     except Exception as e:
         return None, str(e)
 
-def preprocess_image(img: Image.Image) -> np.ndarray:
-    """Redimensionne et normalise l'image pour la prédiction."""
+def preprocess_image(img: Image.Image, normalize: bool = True) -> np.ndarray:
+    """Redimensionne l'image. normalize=False pour EfficientNetB0 (normalisation interne)."""
     img = img.convert('RGB').resize(IMG_SIZE)
-    arr = np.array(img) / 255.0
+    arr = np.array(img, dtype=np.float32)
+    if normalize:
+        arr = arr / 255.0
     return arr.reshape(1, *IMG_SIZE, 3)
 
 def predict(model, img_array: np.ndarray):
@@ -243,7 +246,7 @@ with tab1:
 
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Image chargée", use_column_width=True)
+            st.image(image, caption="Image chargée", use_container_width=True)
             
             st.markdown("#### 📐 Informations sur l'image")
             info_col1, info_col2, info_col3 = st.columns(3)
@@ -287,7 +290,9 @@ with tab1:
                 """, unsafe_allow_html=True)
             else:
                 with st.spinner("Analyse en cours..."):
-                    img_array = preprocess_image(image)
+                    # EfficientNetB0 has internal rescaling — pass raw pixels [0,255]
+                    normalize = "cnn" in model_path
+                    img_array = preprocess_image(image, normalize=normalize)
                     probs, top5_idx, top5_prob = predict(model, img_array)
 
                 pred_class = top5_idx[0]
