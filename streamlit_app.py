@@ -75,14 +75,14 @@ CLASS_EMOJIS = {
 IMG_SIZE = (64, 64)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Chargement des modèles
+# Chargement des modèles (ONNX — compatible Python 3.14, pas de TensorFlow)
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_models():
     try:
-        import tensorflow as tf
-        tl  = tf.keras.models.load_model("gtsrb_efficientnet_final.keras")
-        cnn = tf.keras.models.load_model("gtsrb_cnn_final.keras")
+        import onnxruntime as ort
+        tl  = ort.InferenceSession("gtsrb_efficientnet_final.onnx")
+        cnn = ort.InferenceSession("gtsrb_cnn_final.onnx")
         return tl, cnn, None
     except Exception as e:
         return None, None, str(e)
@@ -99,11 +99,12 @@ def preprocess_cnn(img: Image.Image) -> np.ndarray:
     return (np.array(img.convert('RGB').resize(IMG_SIZE), dtype=np.float32) / 255.0).reshape(1, 64, 64, 3)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Prédiction
+# Prédiction (onnxruntime)
 # ─────────────────────────────────────────────────────────────────────────────
-def predict_top5(model, arr: np.ndarray):
-    probs    = model.predict(arr, verbose=0)[0]
-    top5_idx = np.argsort(probs)[::-1][:5]
+def predict_top5(session, arr: np.ndarray):
+    input_name = session.get_inputs()[0].name
+    probs      = session.run(None, {input_name: arr})[0][0]
+    top5_idx   = np.argsort(probs)[::-1][:5]
     return probs, top5_idx, probs[top5_idx]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -161,34 +162,15 @@ def add_history(source: str, file_name: str, class_name: str, confidence: float)
         "Confiance (%)":  round(confidence * 100, 1)
     })
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Grad-CAM (gradient de saillance w.r.t. image d'entrée)
-# ─────────────────────────────────────────────────────────────────────────────
-def compute_gradcam(model, img_array_raw: np.ndarray, class_idx: int):
-    """
-    Calcule un gradient de saillance par rapport à l'image d'entrée.
-    Fonctionne avec les modèles imbriqués (EfficientNetB0 nested).
-    """
-    try:
-        import tensorflow as tf
-        img_var = tf.Variable(tf.cast(img_array_raw, tf.float32))
-        with tf.GradientTape() as tape:
-            preds = model(img_var, training=False)
-            score = preds[:, class_idx]
-        grads    = tape.gradient(score, img_var)[0]          # (64,64,3)
-        heatmap  = tf.reduce_max(tf.abs(grads), axis=-1).numpy()  # (64,64)
-        heatmap  = np.maximum(heatmap, 0)
-        heatmap /= (heatmap.max() + 1e-8)
-        return heatmap
-    except Exception:
-        return None
+# Grad-CAM désactivé : nécessite TensorFlow (non disponible en déploiement ONNX)
+def compute_gradcam(*args, **kwargs):
+    return None
 
 def overlay_heatmap(img_pil: Image.Image, heatmap: np.ndarray) -> Image.Image:
     h_small = Image.fromarray((heatmap * 255).astype(np.uint8)).resize(img_pil.size, Image.BILINEAR)
     colormap = mcm.get_cmap('jet')
     h_rgb = (colormap(np.array(h_small) / 255.0)[:, :, :3] * 255).astype(np.uint8)
-    blended = Image.blend(img_pil.convert('RGB'), Image.fromarray(h_rgb), alpha=0.4)
-    return blended
+    return Image.blend(img_pil.convert('RGB'), Image.fromarray(h_rgb), alpha=0.4)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Init session_state
