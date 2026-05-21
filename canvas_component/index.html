@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 300px; height: 355px; background: #0e1117; font-family: sans-serif; overflow: hidden; }
+  .ctrl {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 6px 0 8px 0;
+    color: #fafafa;
+    font-size: 13px;
+    flex-wrap: nowrap;
+  }
+  input[type=range] { width: 120px; accent-color: #4299e1; cursor: pointer; }
+  #clearBtn {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e53e3e;
+    color: white;
+  }
+  #clearBtn:hover { background: #c53030; }
+  canvas {
+    border: 2px solid #4299e1;
+    border-radius: 8px;
+    cursor: crosshair;
+    display: block;
+    background: white;
+  }
+</style>
+</head>
+<body>
+<div class="ctrl">
+  <label>🖊&nbsp;<input type="range" id="sz" min="5" max="30" value="12"></label>
+  <span id="szVal">12 px</span>
+  <button id="clearBtn">🗑 Effacer</button>
+</div>
+<canvas id="cv" width="280" height="280"></canvas>
+
+<script>
+  /* ── Protocole Streamlit (isStreamlitMessage obligatoire) ── */
+  function post(msg) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true }, msg), "*");
+  }
+  function sendReady()  { post({ type: "streamlit:componentReady", apiVersion: 1 }); }
+  function sendHeight() { post({ type: "streamlit:setFrameHeight", height: 355 }); }
+  function sendValue(v) { post({ type: "streamlit:setComponentValue", value: v, dataType: v === null ? "undefined" : "json" }); }
+
+  /* ── Canvas ── */
+  const cv  = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const sz  = document.getElementById("sz");
+  const szV = document.getElementById("szVal");
+  let drawing = false;
+  let hasDrawn = false;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, 280, 280);
+
+  sz.addEventListener("input", () => { szV.textContent = sz.value + " px"; });
+
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, 280, 280);
+    hasDrawn = false;
+    sendValue(null);
+  });
+
+  function getXY(e) {
+    const r = cv.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    return [s.clientX - r.left, s.clientY - r.top];
+  }
+
+  function dot(e) {
+    const [x, y] = getXY(e);
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(x, y, parseInt(sz.value) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    hasDrawn = true;
+  }
+
+  cv.addEventListener("mousedown",  e => { drawing = true; dot(e); });
+  cv.addEventListener("mousemove",  e => { if (drawing) dot(e); });
+  cv.addEventListener("mouseup",    ()  => { drawing = false; if (hasDrawn) sendValue(cv.toDataURL("image/png")); });
+  cv.addEventListener("mouseleave", ()  => { drawing = false; });
+  cv.addEventListener("touchstart", e => { e.preventDefault(); drawing = true; dot(e); }, { passive: false });
+  cv.addEventListener("touchmove",  e => { e.preventDefault(); if (drawing) dot(e); }, { passive: false });
+  cv.addEventListener("touchend",   ()  => { drawing = false; if (hasDrawn) sendValue(cv.toDataURL("image/png")); });
+
+  /* ── Init : hauteur fixe 355px, appelée plusieurs fois pour garantie ── */
+  sendReady();
+  sendHeight();
+  window.addEventListener("load", () => { sendHeight(); });
+  setTimeout(sendHeight, 200);
+  setTimeout(sendHeight, 600);
+</script>
+</body>
+</html>

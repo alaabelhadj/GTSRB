@@ -283,36 +283,30 @@ with tab_predict:
             </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ONGLET 2 — DESSIN
+# ONGLET 2 — DESSIN  (composant HTML natif — pas de dépendance externe)
 # ══════════════════════════════════════════════════════════════════════════════
+import streamlit.components.v1 as _cv1
+import base64
+from io import BytesIO
+
+_canvas_component = _cv1.declare_component("canvas_draw", path="canvas_component")
+
 with tab_draw:
     st.markdown("### ✏️ Dessinez votre panneau à la main")
-    try:
-        from streamlit_drawable_canvas import st_canvas
+    col_can, col_draw_res = st.columns([1, 1], gap="large")
 
-        col_can, col_draw_res = st.columns([1, 1], gap="large")
+    with col_can:
+        st.markdown("**Dessinez sur le canvas (taille et effacement intégrés) :**")
+        canvas_b64 = _canvas_component(key="canvas_main", default=None)
+        predict_drawing = st.button("🔮 Prédire mon dessin", use_container_width=True)
 
-        with col_can:
-            st.markdown("**Dessinez sur le canvas ci-dessous :**")
-            brush = st.slider("Taille du pinceau", 5, 30, 12, key="brush")
-            canvas_result = st_canvas(
-                fill_color="rgba(255,255,255,0)",
-                stroke_width=brush,
-                stroke_color="#000000",
-                background_color="#FFFFFF",
-                width=280,
-                height=280,
-                drawing_mode="freedraw",
-                key="canvas_main"
-            )
-            predict_drawing = st.button("🔮 Prédire mon dessin", use_container_width=True)
-
-        with col_draw_res:
-            st.markdown("### 🎯 Résultat")
-            if predict_drawing:
-                if canvas_result.image_data is not None and canvas_result.image_data.sum() > 0:
-                    img_data = canvas_result.image_data[:, :, :3].astype(np.uint8)
-                    img_pil  = Image.fromarray(img_data)
+    with col_draw_res:
+        st.markdown("### 🎯 Résultat")
+        if predict_drawing:
+            if canvas_b64:
+                try:
+                    img_bytes = base64.b64decode(canvas_b64.split(",")[1])
+                    img_pil   = Image.open(BytesIO(img_bytes)).convert("RGB")
                     arr = preprocess_tl(img_pil)
                     with st.spinner("Analyse..."):
                         probs, top5_idx, top5_prob = predict_top5(tl_model, arr)
@@ -321,18 +315,16 @@ with tab_draw:
                     fig = plot_top5(top5_idx, top5_prob)
                     st.pyplot(fig); plt.close()
                     add_history("✏️ Dessin", "dessin-main", CLASS_NAMES[pred_class], pred_prob)
-                else:
-                    st.warning("⚠️ Canvas vide — dessinez d'abord un panneau.")
+                except Exception as e:
+                    st.error(f"Erreur de traitement : {e}")
             else:
-                st.markdown("""
-                <div class='info-box'>
-                    Dessinez un panneau sur le canvas à gauche,
-                    puis cliquez sur <b>Prédire mon dessin</b>.
-                </div>""", unsafe_allow_html=True)
-
-    except ImportError:
-        st.error("❌ Module `streamlit-drawable-canvas` non installé.")
-        st.code("pip install streamlit-drawable-canvas")
+                st.warning("⚠️ Canvas vide — dessinez d'abord un panneau.")
+        else:
+            st.markdown("""
+            <div class='info-box'>
+                Dessinez un panneau sur le canvas à gauche,<br>
+                puis cliquez sur <b>🔮 Prédire mon dessin</b>.
+            </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ONGLET 3 — BATCH
